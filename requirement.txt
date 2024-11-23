@@ -1,0 +1,4 @@
+pymilvus 
+sentence-transformers 
+PyPDF2 
+python-docx
