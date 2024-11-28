@@ -72,7 +72,7 @@ def load_embeddings(folder_path="vectordb"):
     print(f"Loaded {len(embeddings)} embeddings from '{folder_path}'.")
     return embeddings, metadata
 # Tạo FAISS Index
-def create_faiss_index(embeddings, index_file="faiss_index.index"):
+def create_faiss_index(embeddings, index_file):
     # Xác định số chiều của vector
     dimension = embeddings.shape[1]
     print(f"Creating FAISS index for {len(embeddings)} embeddings with dimension {dimension}.")
@@ -125,4 +125,4 @@ if __name__ == "__main__":
     # Hiển thị kết quả
     print("Top 5 kết quả tương tự:")
     for i, (dist, idx) in enumerate(zip(distances[0], indices[0]), 1):
-        print(f"Rank {i}: Index {idx}, Distance {dist}")
+        print(f"Rank {i}: Index {idx}, Distance {dist}", )

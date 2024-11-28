@@ -1,54 +1,82 @@
 import os
 from docx import Document
 from PyPDF2 import PdfReader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from sentence_transformers import SentenceTransformer
+from langchain_community.vectorstores import FAISS
 
 # Load data
 def read_docx(file_path):
-    doc = Document(file_path)
-    text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
-    return text
+    try:
+        doc = Document(file_path)
+        text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
+        return text
+    except Exception as e:
+        print(f"Error reading .docx file {file_path}: {e}")
+
 def read_pdf(file_path):
     reader = PdfReader(file_path)
     text = "\n".join([page.extract_text() for page in reader.pages])
     return text
-def split_data(text, chunk_size = 100, overlap = 50):
-    words = text.split()
-    chunks = []
-    for i in range(0, len(words), chunk_size - overlap):
-        chunks.append(" ".join(words[i:i + chunk_size]))
-    return chunks
-# Duyệt qua toàn bộ thư mục data
-def load_data_from_folder(folder_path):
+
+def load_documents_from_folder(folder_path):
     documents = []
-    metadata = []
-    for root, dirs, files in os.walk(folder_path):
-        for file in files:
-            file_path = os.path.join(root, file)
-            if file.endswith('.docx'):
-                text = read_docx(file_path)
-            elif file.endswith('.pdf'):
-                text = read_pdf(file_path)
-            else:
-                continue
-            chunks = split_data(text)
-            # print(f"File {file} created {len(chunks)} chunks.")
-            documents.extend(chunks)
-            metadata.extend([{"file_name": file, "folder": root, "chunk": chunk} for chunk in chunks])
-    # print(f"Total documents loaded: {len(documents)}")
-    return documents, metadata
+    for root, dirs, files in os.walk(folder_path):  # Sử dụng os.walk để duyệt qua thư mục và các thư mục con
+        for filename in files:
+            file_path = os.path.join(root, filename)
+            try:
+                if filename.lower().endswith((".docx", ".pdf", ".txt")):  # Chấp nhận .docx, .pdf, .txt
+                    if filename.endswith(".docx"):
+                        doc_text = read_docx(file_path)
+                        doc_text = doc_text.strip()
+                        if doc_text:  # Nếu có nội dung
+                            documents.append(doc_text)
+                    elif filename.endswith(".pdf"):
+                        pdf_text = read_pdf(file_path)
+                        pdf_text = pdf_text.strip()
+                        if pdf_text:  # Nếu có nội dung
+                            documents.append(pdf_text)
+                    else:
+                        print(f"Unsupported file type: {file_path}")
+                        continue
+            except Exception as e:
+                print(f"Error reading file {filename}: {e}")
+    return documents
+# print(load_documents_from_folder("/home/minhlahanhne/DATN_pre-trained/data"))
+def split_data(texts, chunk_size=100, overlap=50, vector_db_path="./vector_db"):
+    model_name = "dangvantuan/vietnamese-embedding"
+    model = SentenceTransformer(model_name, device="cpu")  # Sử dụng CPU để debug
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=overlap)
+    all_chunks = []
+    
+    # Tạo đối tượng Document từ mỗi chuỗi trong texts
+    documents = [Document(text) for text in texts]
+    
+    # Chia các văn bản trong documents thành các chunk
+    for doc in documents:
+        chunks = text_splitter.split_documents([doc])  # Sử dụng split_documents để chia nhỏ văn bản
+        all_chunks.extend(chunks)        
+    print(f"Total number of chunks: {len(all_chunks)}")
+    embeddings = model.encode([chunk.text for chunk in all_chunks], convert_to_tensor=True)
+    
+    # Save embeddings vector to FAISS
+    db = FAISS.from_documents(all_chunks, embeddings)
+    db.save_local(vector_db_path)
+    print(f"Embeddings saved to {vector_db_path}")
+    return db
 
-# # documents = load_document("data")
-if __name__ == "__main__":
+def main():
     folder_path = "./data"
-    documents, metadata = load_data_from_folder(folder_path)  # Lấy cả documents và metadata
-    # Đếm và in số lượng chunk đã tạo
-    print(f"Total chunks created: {len(documents)}")
+    documents = load_documents_from_folder(folder_path)
+    print(f"Total documents loaded: {len(documents)}")
+    
+    # Kiểm tra xem thư mục có dữ liệu không
+    if not documents:
+        print("No documents found in the folder!")
+        return
+    
+    # Chia nhỏ dữ liệu thành chunks và lưu embedding vectors vào FAISS
+    split_data(documents)
 
-    #     # In thử chunk đầu tiên
-    if documents:
-        print(f"Chunk 1: {documents[366]}")
-        # print(f"chunk 2: {documents[1]}")
-        # print(f"chunk 3: {documents[2]}")
-    else:
-        print("No chunks loaded.")
-
+if __name__ == "__main__":
+    main()
